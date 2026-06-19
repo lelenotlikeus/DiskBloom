@@ -1,0 +1,23 @@
+[project]
+name = "diskbloom"
+version = "0.1.0"
+description = "Modern Python desktop disk usage scanner."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "DiskBloom contributors" }]
+dependencies = [
+  "PySide6>=6.7",
+  "send2trash>=1.8.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pyinstaller>=6.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
