@@ -217,7 +217,7 @@ QMainWindow, QWidget {{
     font-family: {cls.font_stack()};
     font-size: {TYPE["body"]};
 }}
-QFrame#panel, QFrame#toolbarPanel {{
+QFrame#panel, QFrame#toolbarPanel, QFrame#treemapPanel {{
     background: {c.surface};
     border: 1px solid {c.border};
     border-radius: {RADIUS["lg"]}px;

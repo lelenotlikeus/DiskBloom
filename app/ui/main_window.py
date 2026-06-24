@@ -393,7 +393,39 @@ class MainWindow(QMainWindow):
         self.center_stack.addWidget(self.tree)
         self.center_stack.addWidget(self.scan_overlay)
         self.center_stack.setCurrentWidget(self.tree_empty)
-        layout.addWidget(self.center_stack)
+        vertical = QSplitter(Qt.Orientation.Vertical)
+        vertical.addWidget(self.center_stack)
+        vertical.addWidget(self._treemap_panel())
+        vertical.setSizes([620, 240])
+        layout.addWidget(vertical)
+        return panel
+
+    def _treemap_panel(self) -> QWidget:
+        panel = QFrame()
+        panel.setObjectName("treemapPanel")
+        panel.setMinimumHeight(180)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(10, 8, 10, 10)
+        layout.setSpacing(7)
+
+        header = QHBoxLayout()
+        title = QLabel("Treemap")
+        title.setObjectName("panelTitle")
+        header.addWidget(title)
+        self.treemap_path = QLabel("No scan loaded")
+        self.treemap_path.setObjectName("muted")
+        self.treemap_path.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        header.addWidget(self.treemap_path, 1)
+        self.treemap_back = QPushButton("Back")
+        self.treemap_back.setEnabled(False)
+        self.treemap_back.clicked.connect(self._treemap_back)
+        header.addWidget(self.treemap_back)
+        layout.addLayout(header)
+
+        self.treemap = TreemapWidget()
+        self.treemap.itemClicked.connect(self.select_item)
+        self.treemap.zoomChanged.connect(self._on_treemap_zoom_changed)
+        layout.addWidget(self.treemap, 1)
         return panel
 
     def _inspector(self) -> QWidget:
@@ -479,9 +511,6 @@ class MainWindow(QMainWindow):
         analysis_layout.addWidget(self._section_label("File type breakdown"))
         self.breakdown = FileTypeBreakdown()
         analysis_layout.addWidget(self.breakdown)
-        self.treemap = TreemapWidget()
-        self.treemap.itemClicked.connect(self.select_item)
-        analysis_layout.addWidget(self.treemap)
         analysis_layout.addWidget(self._section_label("Largest files"))
         self.largest_files = AnalysisList()
         self.largest_files.setMinimumHeight(55)
@@ -638,6 +667,7 @@ class MainWindow(QMainWindow):
         self.model.set_root(None)
         self.root_item = None
         self.treemap.set_root(None)
+        self._on_treemap_zoom_changed(None)
         self.scan_overlay.start(self.current_path)
         self.center_stack.setCurrentWidget(self.scan_overlay)
         thread = QThread(self)
@@ -760,10 +790,25 @@ class MainWindow(QMainWindow):
         indexes = self.tree.selectionModel().selectedRows()
         if not indexes:
             self._selected_item = None
+            self.treemap.set_selected_item(None)
             return
         source = self.proxy.mapToSource(indexes[0])
         self._selected_item = source.data(Qt.ItemDataRole.UserRole)
+        self.treemap.set_selected_item(self._selected_item)
         self._update_details()
+
+    def _treemap_back(self) -> None:
+        self.treemap.go_back()
+
+    @Slot(object)
+    def _on_treemap_zoom_changed(self, item: DiskItem | None) -> None:
+        if item:
+            self.treemap_path.setText(item.absolute_path)
+            self.treemap_path.setToolTip(item.absolute_path)
+        else:
+            self.treemap_path.setText("No scan loaded")
+            self.treemap_path.setToolTip("")
+        self.treemap_back.setEnabled(self.treemap.can_go_back())
 
     def _update_details(self) -> None:
         item = self._selected_item
@@ -878,6 +923,7 @@ class MainWindow(QMainWindow):
                 node.size = max(0, node.size - item.size)
                 node = node.parent
         self.model.set_root(self.root_item)
+        self.treemap.set_root(self.root_item)
         self._refresh_analysis()
         if permanent:
             self.status.showMessage(f"Permanently deleted: {item.name}.")
@@ -918,6 +964,7 @@ class MainWindow(QMainWindow):
         self.tree.setCurrentIndex(proxy_index)
         self.tree.scrollTo(proxy_index)
         self._selected_item = item
+        self.treemap.set_selected_item(item)
         self._update_details()
 
     def _estimate_reclaimable(self, root: DiskItem) -> int:
