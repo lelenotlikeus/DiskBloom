@@ -22,6 +22,7 @@ class PaintedRect:
     depth: int
     label: str = ""
     grouped_size: int = 0
+    size_ratio: float = 0.0
 
 
 class TreemapWidget(QWidget):
@@ -107,7 +108,15 @@ class TreemapWidget(QWidget):
                 continue
             item = layout.item if isinstance(layout.item, DiskItem) else None
             grouped_size = getattr(layout.item, "size", 0) if item is None else 0
-            painted = PaintedRect(rect, item, depth, "Other" if item is None else item.name, grouped_size)
+            size = item.size if item else grouped_size
+            painted = PaintedRect(
+                rect,
+                item,
+                depth,
+                "Other" if item is None else item.name,
+                grouped_size,
+                min(1.0, size / max(root.size, 1)),
+            )
             self._painted.append(painted)
             can_recurse = (
                 bool(item and item.is_folder and item.children)
@@ -138,7 +147,7 @@ class TreemapWidget(QWidget):
 
     def _draw_rect(self, painter: QPainter, painted: PaintedRect, *, as_container: bool = False) -> None:
         c = ThemeManager.tokens()
-        color = self._color_for_item(painted.item)
+        color = self._color_for_item(painted.item, painted.size_ratio)
         rect = painted.rect
         radius = 4 if rect.width() > 8 and rect.height() > 8 else 1
 
@@ -188,12 +197,12 @@ class TreemapWidget(QWidget):
                 text = f"{painted.label}\n{format_size(size)}" if rect.height() >= 42 else painted.label
                 painter.drawText(rect.adjusted(6, 4, -6, -4), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, text)
 
-    def _color_for_item(self, item: DiskItem | None) -> QColor:
+    def _color_for_item(self, item: DiskItem | None, size_ratio: float = 0.0) -> QColor:
         c = ThemeManager.tokens()
         if item is None:
-            return QColor(c.subtle)
+            return self._apply_size_heat(QColor(c.subtle), size_ratio)
         if item.is_folder:
-            return QColor("#2f4655" if c.name == "dark" else "#d6e0e7")
+            return self._apply_size_heat(QColor("#2f4655" if c.name == "dark" else "#d6e0e7"), size_ratio, folder=True)
         ext = item.extension.lower()
         if ext in {
             ".exe",
@@ -212,15 +221,15 @@ class TreemapWidget(QWidget):
             ".wad",
             ".bundle",
         }:
-            return QColor("#27b8d8")
+            return self._apply_size_heat(QColor("#27b8d8"), size_ratio)
         if ext in {".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".iso"}:
-            return QColor("#dca84a")
+            return self._apply_size_heat(QColor("#dca84a"), size_ratio)
         if ext in {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".m4v"}:
-            return QColor("#9377f2")
+            return self._apply_size_heat(QColor("#9377f2"), size_ratio)
         if ext in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tiff", ".heic", ".svg"}:
-            return QColor("#4fbd83")
+            return self._apply_size_heat(QColor("#4fbd83"), size_ratio)
         if ext in {".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a"}:
-            return QColor("#44a7b7")
+            return self._apply_size_heat(QColor("#44a7b7"), size_ratio)
         if ext in {
             ".py",
             ".js",
@@ -241,8 +250,34 @@ class TreemapWidget(QWidget):
             ".yaml",
             ".yml",
         }:
-            return QColor("#7d8792" if c.name == "dark" else "#98a4af")
-        return QColor("#5f6f7c" if c.name == "dark" else "#b7c2ca")
+            return self._apply_size_heat(QColor("#7d8792" if c.name == "dark" else "#98a4af"), size_ratio)
+        return self._apply_size_heat(QColor("#5f6f7c" if c.name == "dark" else "#b7c2ca"), size_ratio)
+
+    def _apply_size_heat(self, base: QColor, size_ratio: float, *, folder: bool = False) -> QColor:
+        ratio = max(0.0, min(1.0, size_ratio))
+        if ratio <= 0:
+            return base
+
+        c = ThemeManager.tokens()
+        heat = ratio ** 0.42
+        warm = QColor("#f0c85a" if c.name == "dark" else "#d9a93d")
+        hot = QColor("#ff5f4f" if c.name == "dark" else "#d84b3f")
+        target = self._mix_color(warm, hot, max(0.0, (heat - 0.42) / 0.58))
+
+        if folder:
+            amount = 0.10 + (heat * 0.24)
+        else:
+            amount = 0.16 + (heat * 0.54)
+        return self._mix_color(base, target, min(0.72, amount))
+
+    @staticmethod
+    def _mix_color(a: QColor, b: QColor, amount: float) -> QColor:
+        t = max(0.0, min(1.0, amount))
+        return QColor(
+            round(a.red() + ((b.red() - a.red()) * t)),
+            round(a.green() + ((b.green() - a.green()) * t)),
+            round(a.blue() + ((b.blue() - a.blue()) * t)),
+        )
 
     def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
         hovered = self._rect_at(event.pos())
